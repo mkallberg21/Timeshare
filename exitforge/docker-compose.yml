@@ -1,0 +1,290 @@
+version: '3.9'
+
+services:
+  # ─── Infrastructure ──────────────────────────────────────────────────────────
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: exitforge
+      POSTGRES_PASSWORD: exitforge_dev
+      POSTGRES_DB: exitforge
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U exitforge']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mongodb:
+    image: mongo:7-jammy
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: exitforge
+      MONGO_INITDB_ROOT_PASSWORD: exitforge_dev
+    ports:
+      - '27017:27017'
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ['CMD', 'mongosh', '--eval', 'db.adminCommand("ping")']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  zookeeper:
+    image: bitnami/zookeeper:3.9
+    restart: unless-stopped
+    environment:
+      ALLOW_ANONYMOUS_LOGIN: 'yes'
+    ports:
+      - '2181:2181'
+    volumes:
+      - zookeeper_data:/bitnami/zookeeper
+
+  kafka:
+    image: bitnami/kafka:3.7
+    restart: unless-stopped
+    depends_on:
+      zookeeper:
+        condition: service_started
+    environment:
+      KAFKA_CFG_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_CFG_LISTENERS: PLAINTEXT://:9092
+      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      ALLOW_PLAINTEXT_LISTENER: 'yes'
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: 'true'
+    ports:
+      - '9092:9092'
+    volumes:
+      - kafka_data:/bitnami/kafka
+    healthcheck:
+      test: ['CMD-SHELL', 'kafka-topics.sh --bootstrap-server localhost:9092 --list']
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # ─── Application Services ────────────────────────────────────────────────────
+
+  case-service:
+    build:
+      context: ./services/case-service
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      PORT: '3001'
+      DATABASE_URL: postgresql://exitforge:exitforge_dev@postgres:5432/exitforge
+      CLERK_SECRET_KEY: ${CLERK_SECRET_KEY}
+      KAFKA_BROKERS: kafka:9092
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      S3_BUCKET_NAME: ${S3_BUCKET_NAME:-exitforge-documents}
+      ML_SERVICE_URL: http://ml-service:8001
+    ports:
+      - '3001:3001'
+
+  intake-service:
+    build:
+      context: ./services/intake-service
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      PORT: '3002'
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      CLERK_SECRET_KEY: ${CLERK_SECRET_KEY}
+      KAFKA_BROKERS: kafka:9092
+      ML_SERVICE_URL: http://ml-service:8001
+    ports:
+      - '3002:3002'
+
+  negotiation-service:
+    build:
+      context: ./services/negotiation-service
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      PORT: '3003'
+      DATABASE_URL: postgresql://exitforge:exitforge_dev@postgres:5432/exitforge
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      CLERK_SECRET_KEY: ${CLERK_SECRET_KEY}
+      KAFKA_BROKERS: kafka:9092
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      S3_BUCKET_NAME: ${S3_BUCKET_NAME:-exitforge-documents}
+      LEGAL_SERVICE_URL: http://legal-service:3006
+    ports:
+      - '3003:3003'
+
+  communication-service:
+    build:
+      context: ./services/communication-service
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      PORT: '3004'
+      SENDGRID_API_KEY: ${SENDGRID_API_KEY}
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN}
+      TWILIO_FROM_NUMBER: ${TWILIO_FROM_NUMBER}
+      KAFKA_BROKERS: kafka:9092
+    ports:
+      - '3004:3004'
+
+  payment-service:
+    build:
+      context: ./services/payment-service
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      PORT: '3005'
+      DATABASE_URL: postgresql://exitforge:exitforge_dev@postgres:5432/exitforge
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
+      ESCROW_API_KEY: ${ESCROW_API_KEY}
+      KAFKA_BROKERS: kafka:9092
+    ports:
+      - '3005:3005'
+
+  legal-service:
+    build:
+      context: ./services/legal-service
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      PORT: '3006'
+      CLERK_SECRET_KEY: ${CLERK_SECRET_KEY}
+      KAFKA_BROKERS: kafka:9092
+    ports:
+      - '3006:3006'
+
+  # ─── Python Services ─────────────────────────────────────────────────────────
+
+  document-service:
+    build:
+      context: ./services/document-service
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    environment:
+      APP_ENV: development
+      PORT: '8002'
+      MONGODB_URL: mongodb://exitforge:exitforge_dev@mongodb:27017
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      S3_BUCKET_NAME: ${S3_BUCKET_NAME:-exitforge-documents}
+    ports:
+      - '8002:8002'
+
+  ml-service:
+    build:
+      context: ./services/ml-service
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      APP_ENV: development
+      PORT: '8001'
+    ports:
+      - '8001:8001'
+
+  resort-intelligence:
+    build:
+      context: ./services/resort-intelligence
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    environment:
+      APP_ENV: development
+      PORT: '8003'
+      MONGODB_URL: mongodb://exitforge:exitforge_dev@mongodb:27017
+    ports:
+      - '8003:8003'
+
+  ai-orchestrator:
+    build:
+      context: ./services/ai-orchestrator
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      APP_ENV: development
+      PORT: '8000'
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      KAFKA_BROKERS: kafka:9092
+      REDIS_URL: redis://redis:6379
+      CASE_SERVICE_URL: http://case-service:3001
+      ML_SERVICE_URL: http://ml-service:8001
+      DOCUMENT_SERVICE_URL: http://document-service:8002
+    ports:
+      - '8000:8000'
+
+  # ─── Apps ────────────────────────────────────────────────────────────────────
+
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - case-service
+    environment:
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
+      CLERK_SECRET_KEY: ${CLERK_SECRET_KEY}
+      CASE_SERVICE_URL: http://case-service:3001
+    ports:
+      - '3000:3000'
+
+volumes:
+  postgres_data:
+  mongo_data:
+  zookeeper_data:
+  kafka_data:

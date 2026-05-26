@@ -1,0 +1,23 @@
+{
+  "name": "@exitforge/api-client",
+  "version": "0.1.0",
+  "private": true,
+  "exports": {
+    ".": {
+      "import": "./src/index.ts",
+      "require": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "generate": "openapi-typescript openapi.yaml -o src/generated/schema.ts",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@exitforge/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "openapi-typescript": "^7.3.0",
+    "typescript": "^5.5.0"
+  }
+}

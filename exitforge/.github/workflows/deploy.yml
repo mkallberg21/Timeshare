@@ -1,0 +1,113 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com
+
+jobs:
+  # ─── Build & push Docker images ─────────────────────────────────────────────
+  build-push:
+    name: Build & push — ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    strategy:
+      matrix:
+        include:
+          - service: case-service
+            context: exitforge/services/case-service
+          - service: intake-service
+            context: exitforge/services/intake-service
+          - service: negotiation-service
+            context: exitforge/services/negotiation-service
+          - service: communication-service
+            context: exitforge/services/communication-service
+          - service: payment-service
+            context: exitforge/services/payment-service
+          - service: legal-service
+            context: exitforge/services/legal-service
+          - service: document-service
+            context: exitforge/services/document-service
+          - service: ml-service
+            context: exitforge/services/ml-service
+          - service: ai-orchestrator
+            context: exitforge/services/ai-orchestrator
+          - service: resort-intelligence
+            context: exitforge/services/resort-intelligence
+          - service: web
+            context: exitforge/apps/web
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set image tag
+        id: tag
+        run: echo "tag=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ matrix.context }}
+          push: true
+          tags: |
+            ${{ env.ECR_REGISTRY }}/exitforge/${{ matrix.service }}:${{ steps.tag.outputs.tag }}
+            ${{ env.ECR_REGISTRY }}/exitforge/${{ matrix.service }}:latest
+          cache-from: type=registry,ref=${{ env.ECR_REGISTRY }}/exitforge/${{ matrix.service }}:latest
+          cache-to: type=inline
+
+  # ─── Deploy to EKS ──────────────────────────────────────────────────────────
+  deploy:
+    name: Helm deploy to EKS
+    needs: build-push
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig \
+            --name exitforge-prod \
+            --region ${{ env.AWS_REGION }}
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.15.0
+
+      - name: Helm upgrade
+        run: |
+          helm upgrade --install exitforge \
+            exitforge/infrastructure/kubernetes \
+            --namespace exitforge \
+            --create-namespace \
+            --atomic \
+            --timeout 5m \
+            --set global.imageRegistry=${{ env.ECR_REGISTRY }} \
+            --set global.imageTag=${{ github.sha }} \
+            -f exitforge/infrastructure/kubernetes/values.yaml

@@ -1,0 +1,229 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Client {
+  id                String    @id @default(cuid())
+  email             String    @unique
+  phone             String?
+  firstName         String
+  lastName          String
+  preferredLanguage String    @default("en")
+  referralSource    String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  cases             Case[]
+
+  @@index([email])
+}
+
+model Case {
+  id                  String        @id @default(cuid())
+  clientId            String
+  client              Client        @relation(fields: [clientId], references: [id])
+  status              CaseStatus    @default(INTAKE)
+  exitTrack           ExitTrack?
+  probabilityScore    Float?
+  timelineP50Days     Int?
+  timelineP90Days     Int?
+  assignedAttorneyId  String?
+  attorney            Attorney?     @relation(fields: [assignedAttorneyId], references: [id])
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+  timeshare           Timeshare?
+  negotiations        Negotiation[]
+  documents           Document[]
+  events              CaseEvent[]
+  fee                 Fee?
+  messages            Message[]
+
+  @@index([clientId])
+  @@index([status])
+  @@index([assignedAttorneyId])
+}
+
+model Timeshare {
+  id                    String   @id @default(cuid())
+  caseId                String   @unique
+  case                  Case     @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  resortId              String
+  resort                Resort   @relation(fields: [resortId], references: [id])
+  contractYear          Int
+  purchasePrice         Float
+  maintenanceFeeAnnual  Float
+  outstandingMortgage   Float
+  contractS3Key         String
+}
+
+model Resort {
+  id                String      @id @default(cuid())
+  name              String
+  developerId       String
+  state             String
+  country           String      @default("US")
+  deedBackAvailable Boolean     @default(false)
+  resistanceScore   Float       @default(0.5)
+  receptivityScore  Float       @default(0.5)
+  lastUpdated       DateTime    @updatedAt
+  timeshares        Timeshare[]
+
+  @@index([name])
+  @@index([state])
+}
+
+model Negotiation {
+  id                    String            @id @default(cuid())
+  caseId                String
+  case                  Case              @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  track                 ExitTrack
+  roundNumber           Int
+  letterS3Key           String?
+  sentAt                DateTime?
+  responseReceivedAt    DateTime?
+  responseType          ResponseType?
+  nextAction            String?
+  nextActionDueAt       DateTime?
+  createdAt             DateTime          @default(now())
+
+  @@index([caseId])
+  @@index([nextActionDueAt])
+}
+
+model Document {
+  id              String          @id @default(cuid())
+  caseId          String
+  case            Case            @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  type            DocumentType
+  s3Key           String
+  ocrStatus       ProcessStatus   @default(PENDING)
+  analysisStatus  ProcessStatus   @default(PENDING)
+  uploadedAt      DateTime        @default(now())
+
+  @@index([caseId])
+  @@index([ocrStatus])
+  @@index([analysisStatus])
+}
+
+model CaseEvent {
+  id            String   @id @default(cuid())
+  caseId        String
+  case          Case     @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  eventType     String
+  triggeredBy   String
+  metadataJson  Json
+  createdAt     DateTime @default(now())
+
+  @@index([caseId])
+  @@index([eventType])
+  @@index([createdAt])
+}
+
+model Fee {
+  id            String      @id @default(cuid())
+  caseId        String      @unique
+  case          Case        @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  basisAmount   Float
+  rateDecimal   Float       @default(0.07)
+  feeAmount     Float
+  status        FeeStatus   @default(PENDING)
+  escrowId      String?
+  calculatedAt  DateTime    @default(now())
+  releasedAt    DateTime?
+}
+
+model Attorney {
+  id              String   @id @default(cuid())
+  name            String
+  barNumber       String   @unique
+  statesLicensed  String[]
+  specialization  String
+  firmName        String
+  contactEmail    String   @unique
+  active          Boolean  @default(true)
+  cases           Case[]
+
+  @@index([active])
+}
+
+model Message {
+  id          String        @id @default(cuid())
+  caseId      String
+  case        Case          @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  senderType  SenderType
+  content     String
+  isRead      Boolean       @default(false)
+  createdAt   DateTime      @default(now())
+
+  @@index([caseId])
+  @@index([isRead])
+  @@index([createdAt])
+}
+
+enum CaseStatus {
+  INTAKE
+  QUALIFICATION
+  DOCUMENT_REVIEW
+  STRATEGY_SELECTED
+  NEGOTIATION_ACTIVE
+  NEGOTIATION_STALLED
+  ESCALATED_LEGAL
+  RESORT_RESPONDED
+  SETTLEMENT_REVIEW
+  EXIT_CONFIRMED
+  FEE_CALCULATED
+  ESCROW_RELEASED
+  CLOSED_SUCCESS
+  CLOSED_FAILURE
+}
+
+enum ExitTrack {
+  DEED_BACK
+  LEGAL_DEMAND
+  REGULATORY_PRESSURE
+  LITIGATION
+}
+
+enum ResponseType {
+  ACCEPTED
+  REJECTED
+  COUNTER
+  LEGAL_THREAT
+  NO_RESPONSE
+}
+
+enum DocumentType {
+  TIMESHARE_CONTRACT
+  DEED
+  MAINTENANCE_FEE_STATEMENT
+  DEMAND_LETTER
+  RESORT_RESPONSE
+  CFPB_COMPLAINT
+  AG_COMPLAINT
+  ATTORNEY_CORRESPONDENCE
+}
+
+enum ProcessStatus {
+  PENDING
+  PROCESSING
+  COMPLETE
+  FAILED
+}
+
+enum FeeStatus {
+  PENDING
+  IN_ESCROW
+  RELEASED
+  REFUNDED
+}
+
+enum SenderType {
+  CLIENT
+  AI_AGENT
+  CASE_MANAGER
+  ATTORNEY
+}

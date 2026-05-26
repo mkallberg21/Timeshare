@@ -1,0 +1,138 @@
+# Default values for all ExitForge services.
+# Override per-environment via values-prod.yaml / values-staging.yaml
+
+global:
+  imageRegistry: ""  # e.g. 123456789.dkr.ecr.us-east-1.amazonaws.com
+  imageTag: latest
+
+services:
+  caseService:
+    name: case-service
+    image: exitforge/case-service
+    port: 3001
+    replicas: 2
+    resources:
+      requests: { cpu: "100m", memory: "256Mi" }
+      limits:   { cpu: "500m", memory: "512Mi" }
+    hpa:
+      minReplicas: 2
+      maxReplicas: 10
+      targetCPUUtilizationPercentage: 70
+
+  intakeService:
+    name: intake-service
+    image: exitforge/intake-service
+    port: 3002
+    replicas: 2
+    resources:
+      requests: { cpu: "100m", memory: "256Mi" }
+      limits:   { cpu: "500m", memory: "512Mi" }
+
+  negotiationService:
+    name: negotiation-service
+    image: exitforge/negotiation-service
+    port: 3003
+    replicas: 2
+    resources:
+      requests: { cpu: "100m", memory: "256Mi" }
+      limits:   { cpu: "500m", memory: "512Mi" }
+
+  communicationService:
+    name: communication-service
+    image: exitforge/communication-service
+    port: 3004
+    replicas: 2
+    resources:
+      requests: { cpu: "100m", memory: "128Mi" }
+      limits:   { cpu: "250m", memory: "256Mi" }
+
+  paymentService:
+    name: payment-service
+    image: exitforge/payment-service
+    port: 3005
+    replicas: 2
+    resources:
+      requests: { cpu: "100m", memory: "256Mi" }
+      limits:   { cpu: "500m", memory: "512Mi" }
+
+  legalService:
+    name: legal-service
+    image: exitforge/legal-service
+    port: 3006
+    replicas: 1
+    resources:
+      requests: { cpu: "50m", memory: "128Mi" }
+      limits:   { cpu: "250m", memory: "256Mi" }
+
+  documentService:
+    name: document-service
+    image: exitforge/document-service
+    port: 8002
+    replicas: 2
+    resources:
+      requests: { cpu: "200m", memory: "512Mi" }
+      limits:   { cpu: "1000m", memory: "1Gi" }
+
+  mlService:
+    name: ml-service
+    image: exitforge/ml-service
+    port: 8001
+    replicas: 2
+    resources:
+      requests: { cpu: "200m", memory: "512Mi" }
+      limits:   { cpu: "1000m", memory: "1Gi" }
+
+  aiOrchestrator:
+    name: ai-orchestrator
+    image: exitforge/ai-orchestrator
+    port: 8000
+    replicas: 2
+    resources:
+      requests: { cpu: "200m", memory: "512Mi" }
+      limits:   { cpu: "1000m", memory: "1Gi" }
+
+  resortIntelligence:
+    name: resort-intelligence
+    image: exitforge/resort-intelligence
+    port: 8003
+    replicas: 1
+    resources:
+      requests: { cpu: "100m", memory: "256Mi" }
+      limits:   { cpu: "500m", memory: "512Mi" }
+
+  web:
+    name: web
+    image: exitforge/web
+    port: 3000
+    replicas: 2
+    resources:
+      requests: { cpu: "100m", memory: "256Mi" }
+      limits:   { cpu: "500m", memory: "512Mi" }
+    hpa:
+      minReplicas: 2
+      maxReplicas: 20
+      targetCPUUtilizationPercentage: 60
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+  hosts:
+    - host: exitforge.com
+      paths:
+        - path: /
+          pathType: Prefix
+          service: web
+    - host: api.exitforge.com
+      paths:
+        - path: /cases
+          pathType: Prefix
+          service: case-service
+        - path: /intake
+          pathType: Prefix
+          service: intake-service
+  tls:
+    - secretName: exitforge-tls
+      hosts: [exitforge.com, api.exitforge.com]
