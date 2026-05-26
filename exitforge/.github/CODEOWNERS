@@ -1,0 +1,32 @@
+# Default reviewer for all files
+* @mkallberg21
+
+# Services
+/exitforge/services/case-service/       @mkallberg21
+/exitforge/services/ai-orchestrator/    @mkallberg21
+/exitforge/services/document-service/   @mkallberg21
+/exitforge/services/ml-service/         @mkallberg21
+/exitforge/services/payment-service/    @mkallberg21
+/exitforge/services/negotiation-service/ @mkallberg21
+/exitforge/services/communication-service/ @mkallberg21
+/exitforge/services/legal-service/      @mkallberg21
+/exitforge/services/intake-service/     @mkallberg21
+/exitforge/services/resort-intelligence/ @mkallberg21
+
+# Frontend
+/exitforge/apps/web/                    @mkallberg21
+/exitforge/apps/admin/                  @mkallberg21
+/exitforge/apps/mobile/                 @mkallberg21
+
+# Shared packages (high-impact changes)
+/exitforge/packages/                    @mkallberg21
+
+# Infrastructure (require extra care)
+/exitforge/infrastructure/              @mkallberg21
+/exitforge/infrastructure/terraform/    @mkallberg21
+
+# Documentation
+/exitforge/docs/                        @mkallberg21
+
+# CI/CD
+/.github/                               @mkallberg21

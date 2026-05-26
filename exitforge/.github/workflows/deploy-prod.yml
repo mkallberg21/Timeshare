@@ -1,0 +1,127 @@
+name: Deploy — Production
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false   # Never cancel an in-flight production deploy
+
+jobs:
+  build-and-push:
+    name: Build & Push ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service:
+          - case-service
+          - intake-service
+          - negotiation-service
+          - communication-service
+          - payment-service
+          - legal-service
+          - document-service
+          - ml-service
+          - ai-orchestrator
+          - resort-intelligence
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_PROD_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Login to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: exitforge/services/${{ matrix.service }}
+          push: true
+          tags: |
+            ${{ steps.ecr-login.outputs.registry }}/exitforge/${{ matrix.service }}:${{ github.ref_name }}
+            ${{ steps.ecr-login.outputs.registry }}/exitforge/${{ matrix.service }}:prod-latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ── Manual approval gate ───────────────────────────────────────────────────
+  # This job pauses until a reviewer approves in the GitHub Actions UI.
+  # Go to: Actions → Deploy — Production → this run → Review deployments
+  # ──────────────────────────────────────────────────────────────────────────
+  await-approval:
+    name: Await Manual Approval
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    environment: production   # "production" env has required reviewers configured in GitHub Settings
+    steps:
+      - name: Approval granted
+        run: echo "Production deployment approved for ${{ github.ref_name }}"
+
+  deploy:
+    name: Helm Upgrade — Production
+    needs: await-approval
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_PROD_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Update kubeconfig
+        run: aws eks update-kubeconfig --name exitforge-prod --region us-east-1
+
+      - name: Helm upgrade
+        run: |
+          helm upgrade --install exitforge-prod exitforge/infrastructure/kubernetes \
+            --namespace exitforge-prod \
+            --create-namespace \
+            --values exitforge/infrastructure/kubernetes/values.yaml \
+            --values exitforge/infrastructure/kubernetes/values.prod.yaml \
+            --set global.imageTag=${{ github.ref_name }} \
+            --atomic \
+            --timeout 15m
+
+      - name: Production smoke tests
+        run: |
+          sleep 60
+          curl -f https://api.exitforge.com/health || exit 1
+          curl -f https://app.exitforge.com || exit 1
+
+      - name: Create GitHub Release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref_name }}
+          release_name: Release ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+
+      - name: Notify Slack
+        if: always()
+        uses: slackapi/slack-github-action@v1
+        with:
+          payload: |
+            {
+              "text": "Production deploy ${{ job.status == 'success' && '✅ succeeded' || '❌ FAILED' }} for `${{ github.ref_name }}` — ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

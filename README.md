@@ -1,4 +1,258 @@
-# ExitForge
+# ExitForge — AI-Orchestrated Timeshare Exit Platform
+
+> ExitForge automates the end-to-end legal exit from timeshare contracts using Claude AI and a LangGraph agent — charging a 7% contingency fee only on confirmed exit, $0 upfront.
+
+---
+
+## Architecture
+
+```mermaid
+graph TB
+    subgraph Clients
+        WEB["apps/web<br/>Next.js 14"]
+        ADMIN["apps/admin<br/>Next.js 14"]
+        MOBILE["apps/mobile<br/>Expo 51"]
+    end
+
+    subgraph "API Gateway (nginx)"
+        GW["nginx ingress"]
+    end
+
+    subgraph "Core Services (NestJS + Fastify)"
+        CS["case-service :3001<br/>Case CRUD · State Machine"]
+        IS["intake-service :3002<br/>AI Qualification"]
+        NS["negotiation-service :3003<br/>Letter Gen · S3"]
+        COMM["communication-service :3004<br/>SendGrid · Twilio"]
+        PS["payment-service :3005<br/>Stripe · Escrow.com"]
+        LS["legal-service :3006<br/>Attorney Queue"]
+    end
+
+    subgraph "AI / ML Services (FastAPI)"
+        AI["ai-orchestrator :8000<br/>LangGraph Agent"]
+        DS["document-service :8002<br/>Textract · Claude"]
+        ML["ml-service :8001<br/>XGBoost Scoring"]
+        RI["resort-intelligence :8003<br/>Resort Profiles"]
+    end
+
+    subgraph "Data Stores"
+        PG["PostgreSQL 16<br/>Cases · Clients · Fees"]
+        MG["MongoDB 7<br/>Documents · Resorts"]
+        RD["Redis 7<br/>Agent Checkpoints"]
+    end
+
+    subgraph "Message Bus"
+        KF["Apache Kafka<br/>Event Streaming"]
+    end
+
+    subgraph "External APIs"
+        CLK["Clerk.dev<br/>Auth / JWT"]
+        ANT["Anthropic Claude<br/>claude-sonnet-4"]
+        STR["Stripe<br/>Payments"]
+        ESC["Escrow.com<br/>Contingency Fees"]
+        AWS["AWS S3 · Textract<br/>Storage · OCR"]
+    end
+
+    WEB & ADMIN & MOBILE --> GW
+    GW --> CS & IS
+    CS --> PG & KF
+    IS --> KF
+    NS --> AWS & KF
+    COMM --> KF
+    PS --> STR & ESC & KF
+    LS --> KF
+    AI --> KF & RD & CS & ML & DS & RI
+    DS --> MG & AWS & ANT
+    ML --> PG
+    RI --> MG
+    CS --> CLK
+    AI --> ANT
+```
+
+---
+
+## Prerequisites
+
+| Tool | Required Version | Install |
+|---|---|---|
+| Node.js | **20.x** | [nodejs.org](https://nodejs.org) or `nvm use 20` |
+| pnpm | **10.x** | `npm i -g pnpm@10` |
+| Python | **3.12** | [python.org](https://python.org) or `pyenv install 3.12` |
+| Docker | **24+** | [docker.com](https://docker.com/get-started) |
+| Docker Compose | **2.x** | Included with Docker Desktop |
+
+---
+
+## Get Running in 5 Minutes
+
+```bash
+# 1. Clone and enter
+git clone https://github.com/mkallberg21/Timeshare.git
+cd Timeshare/exitforge
+
+# 2. Install Node dependencies
+pnpm install
+
+# 3. Copy and fill in environment variables
+cp .env.example .env
+# Fill in: CLERK_SECRET_KEY, ANTHROPIC_API_KEY, STRIPE_SECRET_KEY
+# (see docs/environment-variables.md for the full reference)
+
+# 4. Start all infrastructure (Postgres, Mongo, Kafka, Redis)
+docker-compose up -d postgres mongodb redis kafka zookeeper
+
+# 5. Run database migrations
+pnpm --filter @exitforge/case-service exec prisma migrate dev
+
+# 6. Start all services in development mode
+pnpm dev
+
+# 7. Open the client portal
+open http://localhost:3000
+```
+
+**Verify everything is up:**
+```bash
+curl http://localhost:3001/health   # case-service
+curl http://localhost:8000/health   # ai-orchestrator
+curl http://localhost:8001/health   # ml-service
+curl http://localhost:8002/health   # document-service
+```
+
+---
+
+## Service Directory
+
+| Service | Port | Language | README |
+|---|---|---|---|
+| `case-service` | 3001 | TypeScript / NestJS | [services/case-service/README.md](exitforge/services/case-service/README.md) |
+| `intake-service` | 3002 | TypeScript / NestJS | [services/intake-service/README.md](exitforge/services/intake-service/README.md) |
+| `negotiation-service` | 3003 | TypeScript / NestJS | [services/negotiation-service/README.md](exitforge/services/negotiation-service/README.md) |
+| `communication-service` | 3004 | TypeScript / NestJS | [services/communication-service/README.md](exitforge/services/communication-service/README.md) |
+| `payment-service` | 3005 | TypeScript / NestJS | [services/payment-service/README.md](exitforge/services/payment-service/README.md) |
+| `legal-service` | 3006 | TypeScript / NestJS | [services/legal-service/README.md](exitforge/services/legal-service/README.md) |
+| `ai-orchestrator` | 8000 | Python / FastAPI | [services/ai-orchestrator/README.md](exitforge/services/ai-orchestrator/README.md) |
+| `ml-service` | 8001 | Python / FastAPI | [services/ml-service/README.md](exitforge/services/ml-service/README.md) |
+| `document-service` | 8002 | Python / FastAPI | [services/document-service/README.md](exitforge/services/document-service/README.md) |
+| `resort-intelligence` | 8003 | Python / FastAPI | [services/resort-intelligence/README.md](exitforge/services/resort-intelligence/README.md) |
+
+---
+
+## Key Documentation
+
+| Document | Description |
+|---|---|
+| [docs/onboarding.md](exitforge/docs/onboarding.md) | New developer 30-minute setup guide |
+| [docs/environment-variables.md](exitforge/docs/environment-variables.md) | Every env var, every service, one place |
+| [docs/deployment.md](exitforge/docs/deployment.md) | How to deploy to staging and production |
+| [docs/coding-standards.md](exitforge/docs/coding-standards.md) | Code style rules with examples |
+| [docs/adr/](exitforge/docs/adr/) | Architecture Decision Records (ADR-001 through ADR-008) |
+| [docs/runbooks/](exitforge/docs/runbooks/) | Production incident playbooks |
+
+---
+
+## Running Tests
+
+```bash
+# Unit tests (all packages, no I/O)
+pnpm test
+
+# Unit tests for one service
+pnpm --filter @exitforge/case-service test
+
+# Integration tests (requires Docker — spins up real DB + Kafka)
+docker-compose --profile test up -d
+pnpm test:integration
+
+# E2E tests (requires staging environment)
+pnpm --filter @exitforge/web test:e2e
+
+# Coverage report
+pnpm --filter @exitforge/case-service test -- --coverage
+```
+
+Coverage thresholds enforced: **80% lines, 75% branches** per service.
+
+---
+
+## Deployment
+
+| Branch / Tag | Target | Trigger |
+|---|---|---|
+| `main` | **Staging** | Auto — on every merge |
+| `release/v*` tag | **Production** | Manual approval gate required |
+
+```bash
+# Deploy to staging (happens automatically on merge to main)
+# See .github/workflows/deploy-staging.yml
+
+# Deploy to production
+git tag release/v1.2.3
+git push origin release/v1.2.3
+# Then approve the GitHub Actions manual gate
+```
+
+See [docs/deployment.md](exitforge/docs/deployment.md) for the full runbook.
+
+---
+
+## Commit Message Format
+
+This repo enforces [Conventional Commits](https://www.conventionalcommits.org/) via `commitlint` + `husky`.
+
+```
+<type>(<scope>): <description>
+
+Types: feat | fix | docs | style | refactor | test | chore | perf | ci | revert
+Scope: service or package name (case-service, intake-service, shared, web, etc.)
+
+Examples:
+  feat(case-service): add ML timeline prediction endpoint
+  fix(payment-service): handle Stripe webhook signature timeout
+  docs(adr): add ADR-009 for vector database selection
+  feat(auth)!: migrate from Clerk v4 to v5  ← breaking change (!)
+```
+
+Commits that don't match this format are **rejected by the pre-commit hook**.
+
+---
+
+## Ownership
+
+| Directory | Owner | Slack |
+|---|---|---|
+| `services/case-service` | Backend Platform | `#eng-backend` |
+| `services/ai-orchestrator` | AI Team | `#eng-ai` |
+| `services/document-service` | AI Team | `#eng-ai` |
+| `services/ml-service` | AI Team | `#eng-ai` |
+| `apps/web` | Frontend | `#eng-frontend` |
+| `apps/mobile` | Mobile | `#eng-mobile` |
+| `infrastructure/` | Platform Eng | `#eng-platform` |
+| `packages/shared` | Backend Platform | `#eng-backend` |
+
+See [.github/CODEOWNERS](.github/CODEOWNERS) for automated review assignments.
+
+---
+
+## Production Readiness
+
+```
+Overall: ████████████████████░░░░  78%
+```
+
+| Layer | Score | Gap |
+|---|---|---|
+| Core business logic | 95% | — |
+| API surface | 90% | — |
+| AI / ML pipeline | 85% | Trained model files missing |
+| Auth & security | 88% | — |
+| Data layer | 90% | — |
+| Infrastructure as code | 85% | Staging env not wired |
+| CI / CD | 85% | — |
+| Observability | 50% | OTel instrumentation needed |
+| Test coverage | 5% | **Critical gap** |
+| ML training data | 10% | Rules-based bootstrap active |
+
+**Full feature inventory and gap analysis:** see the [detailed production readiness section](#) below or open the original README content.
 
 > AI-orchestrated timeshare exit platform. 7% contingency fee — $0 upfront. Every architectural decision is defensible to a Series A technical due diligence team.
 

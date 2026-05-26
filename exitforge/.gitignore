@@ -1,18 +1,66 @@
+# Dependencies
 node_modules
+.pnp
+.pnp.js
+
+# Build outputs
 dist
+build
 .next
+!.next/cache
 .turbo
+*.tsbuildinfo
+
+# Test coverage
 coverage
-*.env
-.env.local
-.env.*.local
+.nyc_output
+
+# Environment files — NEVER commit these
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Logs
 *.log
+npm-debug.log*
+pnpm-debug.log*
+
+# OS
 .DS_Store
 Thumbs.db
-*.pyc
+
+# Editor — commit .vscode/extensions.json only
+.idea
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# Python
+*.py[cod]
 __pycache__
 .venv
+venv
 *.egg-info
 .pytest_cache
 .mypy_cache
 .ruff_cache
+*.pkl
+!models/.gitkeep
+
+# Terraform
+*.tfstate
+*.tfstate.backup
+*.tfvars
+!*.tfvars.example
+.terraform
+.terraform.lock.hcl
+
+# Misc
+*.tgz
+.cache
+prisma/generated
