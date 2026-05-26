@@ -45,6 +45,9 @@ model Case {
   @@index([clientId])
   @@index([status])
   @@index([assignedAttorneyId])
+  @@index([clientId, status])       // list cases filtered by status for a client
+  @@index([assignedAttorneyId, status]) // attorney workload by status
+  @@index([createdAt])              // recency-sorted dashboards
 }
 
 model Timeshare {
@@ -92,6 +95,7 @@ model Negotiation {
 
   @@index([caseId])
   @@index([nextActionDueAt])
+  @@index([caseId, roundNumber])   // fetch rounds for a case in order
 }
 
 model Document {
@@ -162,6 +166,7 @@ model Message {
   @@index([caseId])
   @@index([isRead])
   @@index([createdAt])
+  @@index([caseId, createdAt])     // paginated message list for a case
 }
 
 enum CaseStatus {

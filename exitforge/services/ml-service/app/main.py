@@ -56,6 +56,24 @@ app = FastAPI(
     version="1.0.0",
 )
 
+# ─── OpenTelemetry instrumentation ────────────────────────────────────────────
+try:
+    import os
+    from opentelemetry import trace
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor
+    from opentelemetry.sdk.resources import Resource
+    from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+    from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+
+    _resource = Resource.create({"service.name": os.getenv("DD_SERVICE", "ml-service")})
+    _provider = TracerProvider(resource=_resource)
+    _otlp_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://otel-collector:4318/v1/traces")
+    _provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=_otlp_endpoint)))
+    trace.set_tracer_provider(_provider)
+    FastAPIInstrumentor.instrument_app(app)
+except ImportError:
+    pass  # OTel not installed — no-op in minimal environments
 
 # ─── Request / Response schemas ───────────────────────────────────────────────
 

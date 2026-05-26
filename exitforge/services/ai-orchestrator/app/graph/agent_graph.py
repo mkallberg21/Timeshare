@@ -14,7 +14,12 @@ import operator
 
 import httpx
 from langgraph.graph import StateGraph, END
-from langgraph.checkpoint.memory import MemorySaver
+try:
+    from langgraph.checkpoint.redis import RedisSaver
+    _REDIS_SAVER_AVAILABLE = True
+except ImportError:  # pragma: no cover — fallback for local dev without Redis
+    from langgraph.checkpoint.memory import MemorySaver as RedisSaver  # type: ignore[assignment]
+    _REDIS_SAVER_AVAILABLE = False
 from typing_extensions import TypedDict
 
 from app.config import get_settings
@@ -484,8 +489,15 @@ def build_agent_graph() -> Any:
     workflow.add_edge("graceful_decline", END)
     workflow.add_edge("human_review", END)
 
-    # MemorySaver for development; swap for RedisCheckpointSaver in production
-    checkpointer = MemorySaver()
+    # Use RedisSaver for durable, cross-pod checkpointing (state survives restarts).
+    # Falls back to in-memory MemorySaver if langgraph-checkpoint-redis not installed.
+    if _REDIS_SAVER_AVAILABLE:
+        checkpointer = RedisSaver(
+            redis_url=settings.redis_url,
+            ttl=60 * 60 * 24 * 30,  # 30 days
+        )
+    else:  # pragma: no cover
+        checkpointer = RedisSaver()  # in-memory fallback
     return workflow.compile(checkpointer=checkpointer)
 
 

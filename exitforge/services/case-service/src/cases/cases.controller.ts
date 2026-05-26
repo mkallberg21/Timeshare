@@ -16,10 +16,11 @@ import { CasesService } from './cases.service';
 import { CreateCaseDto } from './dto/create-case.dto';
 import { SendMessageDto } from './dto/send-message.dto';
 import { ApiResponse } from '../common/api-response';
+import { ThrottlerGuard, Throttle } from '@nestjs/throttler';
 
 @ApiTags('Cases')
 @ApiBearerAuth()
-@UseGuards(ClerkAuthGuard)
+@UseGuards(ClerkAuthGuard, ThrottlerGuard)
 @Controller('api/v1/cases')
 export class CasesController {
   constructor(private readonly casesService: CasesService) {}

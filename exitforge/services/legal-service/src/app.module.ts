@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { EnvSchema } from './config/env.schema';
 import { AttorneyModule } from './attorneys/attorney.module';
+import { PrismaModule } from './prisma/prisma.module';
+import { SlaModule } from './sla/sla.module';
 
 @Module({
   imports: [
@@ -13,7 +15,9 @@ import { AttorneyModule } from './attorneys/attorney.module';
         return result.data;
       },
     }),
+    PrismaModule,
     AttorneyModule,
+    SlaModule,
   ],
 })
 export class AppModule {}

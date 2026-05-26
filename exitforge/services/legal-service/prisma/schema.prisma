@@ -1,0 +1,62 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Attorney entities ────────────────────────────────────────────────────────
+
+model Attorney {
+  id                String             @id @default(cuid())
+  name              String
+  barNumber         String             @unique
+  statesLicensed    String[]
+  specialization    String             @default("GENERAL")
+  firmName          String
+  contactEmail      String
+  active            Boolean            @default(true)
+  currentCaseLoad   Int                @default(0)
+  maxCaseLoad       Int                @default(20)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  reviewItems       AttorneyReviewItem[]
+
+  @@index([active, currentCaseLoad])
+  @@index([statesLicensed])
+}
+
+// ─── Attorney review queue ────────────────────────────────────────────────────
+
+model AttorneyReviewItem {
+  id              String             @id @default(cuid())
+  caseId          String
+  roundNumber     Int
+  track           String
+  letterDraft     String             @db.Text
+  letterS3Key     String?
+  status          ReviewItemStatus   @default(PENDING)
+  assignedTo      String?
+  attorney        Attorney?          @relation(fields: [assignedTo], references: [id])
+  priority        Int                @default(1)
+  slaDueAt        DateTime
+  reviewedAt      DateTime?
+  reviewedBy      String?
+  rejectionNote   String?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  @@index([status, slaDueAt])
+  @@index([caseId, roundNumber])
+  @@index([assignedTo, status])
+}
+
+enum ReviewItemStatus {
+  PENDING
+  IN_REVIEW
+  APPROVED
+  REJECTED
+  EXPIRED
+}
