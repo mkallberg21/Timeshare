@@ -41,6 +41,7 @@ model Case {
   events              CaseEvent[]
   fee                 Fee?
   messages            Message[]
+  evidencePacks       EvidencePack[]
 
   @@index([clientId])
   @@index([status])
@@ -231,4 +232,37 @@ enum SenderType {
   AI_AGENT
   CASE_MANAGER
   ATTORNEY
+}
+
+model EvidencePack {
+  id              String                     @id @default(cuid())
+  caseId          String
+  case            Case                       @relation(fields: [caseId], references: [id])
+  status          EvidencePackStatus         @default(GENERATING)
+  version         Int                        @default(1)
+  s3Key           String?
+  pageCount       Int?
+  strengthScore   Float?
+  generatedAt     DateTime?
+  deliveredAt     DateTime?
+  deliveredTo     String?
+  deliveryMethod  EvidencePackDeliveryMethod?
+  createdAt       DateTime                   @default(now())
+  updatedAt       DateTime                   @updatedAt
+
+  @@index([caseId])
+  @@index([status])
+}
+
+enum EvidencePackStatus {
+  GENERATING
+  READY
+  DELIVERED
+  FAILED
+}
+
+enum EvidencePackDeliveryMethod {
+  EMAIL
+  PORTAL
+  SECURE_LINK
 }

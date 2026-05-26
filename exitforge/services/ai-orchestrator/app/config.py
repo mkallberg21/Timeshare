@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     resort_intelligence_url: str = "http://resort-intelligence:8003"
     legal_service_url: str = "http://legal-service:8004"
     case_service_url: str = "http://case-service:4000"
+    evidence_pack_service_url: str = "http://evidence-pack-service:8006"
 
     # Kafka
     kafka_brokers: str = "localhost:9092"

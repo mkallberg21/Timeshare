@@ -49,6 +49,9 @@ class CaseState(TypedDict):
     human_review_priority: str | None
     error: str | None
     correlation_id: str
+    evidence_pack_id: str | None
+    evidence_pack_status: str | None
+    assigned_attorney_email: str | None
 
 
 # ─── Node: Intake Analyzer ────────────────────────────────────────────────────
@@ -419,6 +422,38 @@ async def graceful_decline_node(state: CaseState) -> dict[str, Any]:
     }
 
 
+# ─── Node: Evidence Pack Generator ──────────────────────────────────────────
+
+async def evidence_pack_generator_node(state: CaseState) -> dict[str, Any]:
+    """
+    Triggers evidence pack assembly for the assigned attorney.
+    Fires-and-forgets — does not wait for PDF generation to complete.
+    The pack is assembled asynchronously by evidence-pack-service.
+    """
+    payload = {
+        "case_id": state["case_id"],
+        "triggered_by": "langgraph:evidence_pack_generator_node",
+        "delivery_method": "EMAIL" if state.get("assigned_attorney_email") else "PORTAL",
+        "attorney_email": state.get("assigned_attorney_email"),
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as http:
+            resp = await http.post(
+                f"{settings.evidence_pack_service_url}/evidence-packs/generate",
+                json=payload,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            pack_id: str = data.get("pack_id", "")
+            logger.info("evidence_pack_generator: triggered pack_id=%s for case %s", pack_id, state["case_id"])
+            return {**state, "evidence_pack_id": pack_id, "evidence_pack_status": "GENERATING"}
+    except httpx.HTTPError as e:
+        logger.error("evidence_pack_generator: service error: %s", e)
+        # Non-fatal — the pack can be regenerated manually from the admin portal
+        return {**state, "evidence_pack_status": "FAILED"}
+
+
 # ─── Routing Functions ────────────────────────────────────────────────────────
 
 def route_after_qualification(state: CaseState) -> str:
@@ -454,6 +489,7 @@ def build_agent_graph() -> Any:
     workflow.add_node("contract_analyzer", contract_analyzer_node)
     workflow.add_node("strategy_selector", strategy_selector_node)
     workflow.add_node("negotiation_orchestrator", negotiation_orchestrator_node)
+    workflow.add_node("evidence_pack_generator", evidence_pack_generator_node)
     workflow.add_node("outcome_processor", outcome_processor_node)
     workflow.add_node("human_review", human_review_node)
     workflow.add_node("graceful_decline", graceful_decline_node)
@@ -480,8 +516,22 @@ def build_agent_graph() -> Any:
         route_after_negotiation,
         {
             "continue": "negotiation_orchestrator",
+            "outcome": "evidence_pack_generator",
+            "escalate": "evidence_pack_generator",
+        },
+    )
+
+    def route_after_evidence_pack(state: CaseState) -> str:
+        if state.get("outcome"):
+            return "outcome"
+        return "human_review"
+
+    workflow.add_conditional_edges(
+        "evidence_pack_generator",
+        route_after_evidence_pack,
+        {
             "outcome": "outcome_processor",
-            "escalate": "human_review",
+            "human_review": "human_review",
         },
     )
 

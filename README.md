@@ -28,10 +28,11 @@ graph TB
     end
 
     subgraph "AI / ML Services (FastAPI)"
-        AI["ai-orchestrator :8000<br/>LangGraph Agent"]
+        AI["ai-orchestrator :8005<br/>LangGraph Agent"]
         DS["document-service :8002<br/>Textract · Claude"]
         ML["ml-service :8001<br/>XGBoost Scoring"]
         RI["resort-intelligence :8003<br/>Resort Profiles"]
+        EP["evidence-pack-service :8006<br/>Pack Assembly · PDF · Delivery"]
     end
 
     subgraph "Data Stores"
@@ -60,10 +61,11 @@ graph TB
     COMM --> KF
     PS --> STR & ESC & KF
     LS --> KF
-    AI --> KF & RD & CS & ML & DS & RI
+    AI --> KF & RD & CS & ML & DS & RI & EP
     DS --> MG & AWS & ANT
     ML --> PG
     RI --> MG
+    EP --> MG & AWS & ANT & KF
     CS --> CLK
     AI --> ANT
 ```
@@ -134,6 +136,7 @@ curl http://localhost:8002/health   # document-service
 | `ml-service` | 8001 | Python / FastAPI | [services/ml-service/README.md](exitforge/services/ml-service/README.md) |
 | `document-service` | 8002 | Python / FastAPI | [services/document-service/README.md](exitforge/services/document-service/README.md) |
 | `resort-intelligence` | 8003 | Python / FastAPI | [services/resort-intelligence/README.md](exitforge/services/resort-intelligence/README.md) |
+| `evidence-pack-service` | 8006 | Python / FastAPI | [services/evidence-pack-service/README.md](exitforge/services/evidence-pack-service/README.md) |
 
 ---
 
